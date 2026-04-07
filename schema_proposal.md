@@ -85,8 +85,8 @@ Configuration-driven catalog of available services. Adding a new visa type or co
 ```
 service_types
 ─────────────────────────────────────────────────
-id                  TEXT  PK                     -- e.g. 'dtv', '90day_report', 'work_permit', 'marriage_permit'
-display_name        TEXT  NOT NULL
+id                  UUID  PK  DEFAULT gen_random_uuid()                     
+display_name        TEXT  NOT NULL              -- e.g. 'dtv', '90day_report', 'work_permit', 'marriage_permit' (ENUM)
 description         TEXT
 category            TEXT  NOT NULL               -- 'visa', 'compliance', 'tax', 'permit'
 region              TEXT                         -- ISO country code or NULL for global
@@ -108,7 +108,7 @@ document_type_requirements
 ─────────────────────────────────────────────────
 id                  UUID  PK  DEFAULT gen_random_uuid()
 service_type_id     TEXT  NOT NULL FK(service_types.id)
-doc_type_key        TEXT  NOT NULL               -- e.g. 'passport', 'financial_assets', 'accommodation'
+doc_type_key        TEXT  NOT NULL               -- e.g. 'passport', 'financial_assets', 'accommodation'  (ENUM)
 display_name        TEXT  NOT NULL
 is_required         BOOLEAN NOT NULL DEFAULT true
 sort_order          INT  NOT NULL DEFAULT 0
@@ -129,7 +129,7 @@ step_definitions
 ─────────────────────────────────────────────────
 id                  UUID  PK  DEFAULT gen_random_uuid()
 service_type_id     TEXT  NOT NULL FK(service_types.id)
-step_key            TEXT  NOT NULL               -- e.g. 'begin', 'upload', 'submit', 'approved'
+step_key            TEXT  NOT NULL               -- e.g. 'begin', 'upload', 'submit', 'approved'  (ENUM)
 display_name        TEXT  NOT NULL
 sort_order          INT  NOT NULL DEFAULT 0
 UNIQUE(service_type_id, step_key)
@@ -508,6 +508,13 @@ created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 
 ---
 
+## Registry/Lookup Tables
+- service_types
+- document_type_requirements
+- step_definitions
+
+
+
 ## Indexing & Partitioning Strategy
 
 ### Primary Indexes (Performance-Critical)
@@ -542,7 +549,6 @@ created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 
 ---
 
-## Security Model
 
 ### Row-Level Security (RLS) Boundaries
 
@@ -564,30 +570,6 @@ created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 6. Conversation records are preserved (unlinked leads remain valid) — the link row is deleted but the conversation itself stays
 
 ---
-
-## Migration Path from Current State
-
-| Current Entity | Target Table(s) | Key Transformation |
-|---|---|---|
-| `standard_accounts` (Firestore) | `accounts` + `account_channels` + `account_platforms` | Flatten identity fields; split channels into rows |
-| `standard_accounts.info.dtv_*` | `services` (one row per active service) + `services.metadata` | DTV-specific fields move to `metadata` JSONB; family applications become separate service rows with applicant details in metadata |
-| `standard_accounts.docs` | `documents` + `document_files` | Map keys become `doc_type_key`; nested arrays become rows |
-| `standard_accounts.docs[*].history` | `document_reviews` | Embedded array → rows with staff FK |
-| `standard_accounts.steps` | `service_steps` | Map keys become `step_key` on a per-service basis |
-| `standard_accounts.internal` | `account_conversation_links` | `issa_ai_id` becomes a link row |
-| `standard_accounts.payment` | `payments` | Structured row per service |
-| `ai_doc_review` (Firestore) | `ai_document_reviews` | Timestamp-keyed maps → rows with proper timestamps |
-| `public.conversations` (Postgres) | `conversations` + `conversation_tags` + `conversation_lead_qualifications` | Normalize tags and lead fields into separate tables |
-
-### Data Quality Fixes
-
-| Issue | Resolution |
-|---|---|
-| `user_id` redundancy | Eliminated; single `id` column |
-| `rejected_timestamp = ""` | `rejected_at TIMESTAMPTZ NULL` on services |
-| `dtv_need_course` mixed types | `metadata` JSONB with application-layer validation; migration normalizes to boolean |
-| Epoch-adjacent timestamps (`~1970`) | Migration script filters and sets to NULL |
-| Empty strings as NULLs in conversations | Migration converts `""` → NULL |
 
 ---
 
